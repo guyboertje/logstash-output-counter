@@ -1,3 +1,6 @@
+## 1.0.4
+  - Use Constants to describe FSM states and tuple indexes
+
 ## 1.0.3
   - Add warmup config option
 

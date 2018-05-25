@@ -3,18 +3,34 @@ require "concurrent"
 
 module LogStash module Outputs
   class Measure
+    START = 0
+    FINISH = 1
+    WARMUP = 2
+    STATE = 3
+
+    S_INIT = 0
+    S_WARMUP = 1
+    S_COUNTING = 2
+
     def initialize(warmup)
       @warmup = warmup.to_f
       @counter = Concurrent::AtomicFixnum.new(0)
       @timers = Concurrent::Tuple.new(4)
+      now = Time.now.to_f
       move_to_init
+      if @warmup == 0.0
+        move_to_warmup
+        set_warmup_start(now)
+        move_to_counting
+        set_counting_start(now)
+      end
     end
 
     def increment(howmany = 1)
       now = Time.now.to_f
-      if initial?
-        move_to_warmup
-        set_warmup_start(now)
+      if counting?
+        @counter.increment(howmany)
+        set_counting_end(now)
       end
 
       if warmup? && warmup_timed_out?(now)
@@ -22,9 +38,9 @@ module LogStash module Outputs
         set_counting_start(now)
       end
 
-      if counting?
-        @counter.increment(howmany)
-        set_counting_end(now)
+      if initial?
+        move_to_warmup
+        set_warmup_start(now)
       end
     end
 
@@ -33,11 +49,11 @@ module LogStash module Outputs
     end
 
     def started_at
-      @timers.get(0)
+      @timers.get(START)
     end
 
     def finished_at
-      @timers.get(1)
+      @timers.get(FINISH)
     end
 
     def count_duration
@@ -45,21 +61,21 @@ module LogStash module Outputs
     end
 
     def report
-      "Events per second: #{count} / #{count_duration} = #{count / count_duration}; microseconds per event: #{count_duration * 1000000 / count}"
+      "Events per second: #{count} / #{count_duration} = #{count / count_duration}; microseconds per event: #{count_duration * 10**6 / count}"
     end
 
     private
 
     def initial?
-      @timers.get(3) == 0
+      @timers.get(STATE) == S_INIT
     end
 
     def warmup?
-      @timers.get(3) == 1
+      @timers.get(STATE) == S_WARMUP
     end
 
     def counting?
-      @timers.get(3) == 2
+      @timers.get(STATE) == S_COUNTING
     end
 
     def warmup_timed_out?(time)
@@ -67,31 +83,31 @@ module LogStash module Outputs
     end
 
     def warmup_started_at
-      @timers.get(2)
+      @timers.get(WARMUP)
     end
 
     def move_to_init
-      @timers.cas(3, nil, 0)
+      @timers.cas(STATE, nil, S_INIT)
     end
 
     def move_to_warmup
-      @timers.cas(3, 0, 1)
+      @timers.cas(STATE, S_INIT, S_WARMUP)
     end
 
     def move_to_counting
-      @timers.cas(3, 1, 2)
+      @timers.cas(STATE, S_WARMUP, S_COUNTING)
     end
 
     def set_warmup_start(time)
-      @timers.cas(2, nil, time)
+      @timers.cas(WARMUP, nil, time)
     end
 
     def set_counting_start(time)
-      @timers.cas(0, nil, time)
+      @timers.cas(START, nil, time)
     end
 
     def set_counting_end(time)
-      @timers.set(1, time)
+      @timers.set(FINISH, time)
     end
 
   end

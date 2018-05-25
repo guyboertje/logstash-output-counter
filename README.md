@@ -1,3 +1,31 @@
+# Building this performance measuring output
+Clone the Github repo locally.
+Make sure you have JRuby 9.1.13.0 or greater. Use `rbenv` from homebrew or your OS software installer.
+Make sure you install rake and bundler `gem i rake bundler`
+```
+cd <clone path>
+gem build ./logstash-output-counter.gemspec
+```
+In your logstash test bed install.
+```
+bin/logstash-plugin install --local <clone path>/logstash-output-counter-1.0.4.gem
+```
+In your config
+```
+output {
+  counter {
+    warmup => 240 # allow plenty of time for JRuby and Java to JIT compile and settle down.
+  }
+}
+```
+After running your pipeline(s) for 1 - 10 minutes after the warmup, shutdown LS.
+You will see a report logged as INFO in the LS logs.
+e.g.
+`[2018-05-25T13:13:14,865][INFO ][logstash.outputs.counter ] Benchmark report: Events per second: 40 / 0.0014431476593017578 = 27717.191475301504; microseconds per event: 36.078691482543945`
+As this counter output adds a very very small performance impact, the events per second you are measuring reflects the input -> queue -> filters performance across all worker threads.
+Remember to only change one variable at a time and keep records of each tweak.
+In a multiple pipeline scenario, where each pipeline will have its own counter output, as all the counter outputs share a threadsafe global counter the report will be logged multiple times but the reports come from the same global counter so they are reporting on the same thing - the overall performance of running a multiple pipeline setup. Measure the perfomance of each pipeline config separately and compare.
+
 # Logstash Plugin
 
 This is a plugin for [Logstash](https://github.com/elasticsearch/logstash).

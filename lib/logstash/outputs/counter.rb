@@ -10,8 +10,9 @@ require "logstash/outputs/measure"
 # to measure filter performance
 
 module LogStash module Outputs class Counter < LogStash::Outputs::Base
-
   concurrency :shared
+
+  config_name "counter"
 
   # Set how long this output wait before beginning measurements.
   #
@@ -26,23 +27,23 @@ module LogStash module Outputs class Counter < LogStash::Outputs::Base
     @measure = Measure.new(warmup.to_f)
   end
 
-  config_name "counter"
-
-  public
-
   def register
     self.class.setup(@warmup)
   end
 
   def receive(event)
-    self.class.measure.increment
+    measure.increment
   end
 
   def multi_receive(events)
-    self.class.measure.increment(events.size)
+    measure.increment(events.size)
+  end
+
+  def measure
+    self.class.measure
   end
 
   def close
-    STDOUT.puts self.class.measure.report
+    logger.info("Benchmark report: " + self.class.measure.report)
   end
 end end end
